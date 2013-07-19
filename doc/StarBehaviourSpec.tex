@@ -1,0 +1,460 @@
+\documentclass[11pt]{article}
+
+\setlength{\oddsidemargin}{0in}
+\setlength{\evensidemargin}{0in}
+\setlength{\topmargin}{-0.5in}
+\setlength{\headheight}{0pt}
+\setlength{\topskip}{0pt}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{9in}
+%\setlength{\parindent}{0pt}
+\setlength{\parskip}{1mm}
+
+\usepackage{epsf}
+
+% Magic incantation to allow proper PostScript to PDF conversion:
+  \usepackage[T1]{fontenc} % type 1 fonts
+  \usepackage{times}       % Times-Roman
+
+\sloppy
+
+\newcommand{\Fwname}{Johar}
+
+\begin{document}
+
+\begin{center} \bf \Large
+Johar ``Star'' Interface Interpreter \\
+Requirements Specification -- Behaviour
+\end{center}
+
+\section{Top-Level Behaviour}
+
+\begin{enumerate}
+\item Read the IDF.
+\item Create the Main Panel.
+  \begin{enumerate}
+  \item Every {\tt CommandGroup} should correspond to a menu on the
+    menu bar.
+  \item There should also be the menu ``Star'', as the rightmost menu on the
+    menu bar.
+  \item The menu item for a command should be the {\tt Label}
+    of the command, followed by ``{\tt ...}'' if selecting the 
+    command will result in a Command Dialog being created (see below).
+  \end{enumerate}
+\item Initialize the Text Area to empty.
+\item Create the GemSetting and validate it.
+\item Call the application engine's initialization method.
+\item Refresh the tables (see below).
+\item Append a horizontal line (this could be just a line of minus
+  characters) to the bottom of the Text Area.  (This will separate any
+  initial message from the application engine from the messages that are
+  responses to the commands.)
+\item Call the {\tt ActiveIfMethod} method of every command, and make each menu
+  item of each menu active or inactive (greyed out) according to the
+  result of the {\tt ActiveIfMethod} method of the command.
+\end{enumerate}
+
+\section{Selecting a Command from a Menu}
+
+When the user selects a command from a menu:
+\begin{enumerate}
+\item Set a String field {\tt lastDisplayedText} to the empty string.
+  (Rationale:  this will be for displaying the last text that the program
+  shows the user.  See below.)
+\item If any table selection is {\it incomplete} (see below) for the command,
+  then pop up a dialog box with an ``OK'' button telling the user
+  which tables they have to select rows in in order to issue the
+  command, and a description of the bounds of the number of rows to
+  select (e.g., ``at least 2'', ``between 1 and 5'').
+\item Otherwise, if no stage in the command has a queryable parameter
+  (i.e., there are no parameters to any of the stages of the command, or all
+  parameters in all stages of the command are
+  {\tt tableEntry} parameters that are not queryable):
+  \begin{enumerate}
+  \item Call {\tt gemSetting.selectCurrentCommand(cmdName)}.
+  \item Call {\tt gemSetting.selectCurrentStage(0)}.
+  \item For each stage \verb/i/ in the command, perform the Stage Loop
+    from the IntI Specification document.
+  \item Perform the Question-and-Wrapup Procedure with parameters 0 and
+    {\tt true}.  (This indicates that the Question-and-Wrapup
+    Procedure should start with question number 0, and should wrap up
+    the command if any questions are cancelled.)
+  \end{enumerate}
+\item Otherwise (i.e., if no table selection is incomplete for
+  the command, but there are queryable parameters):
+  \begin{enumerate}
+  \item Call {\tt gemSetting.selectCurrentCommand(cmdName)}.
+  \item Create the Command Dialog for the command.
+    (The Command Dialog will take over the rest of the processing
+    of the command.)
+  \end{enumerate}
+\end{enumerate}
+A table selection is {\it incomplete for a given command}
+if it contains at least one stage with a parameter with the following
+characteristics:
+\begin{enumerate}
+\item The parameter is of type {\tt tableEntry};
+\item The {\tt SourceTable} of the parameter is {\tt Browsable};
+\item The parameter does not have a {\tt ParentParameter}; and
+\item The {\tt MinNumberOfReps} for the parameter is greater than the
+  number of rows that are currently selected in the {\tt SourceTable} of the
+  parameter.
+\end{enumerate}
+
+\section{Question-and-Wrapup Procedure}
+
+The Question-and-Wrapup Procedure takes two parameters: the number of the
+question ({\tt int questionNumber}), and an indication of whether the
+command should be wrapped up if a question is cancelled
+({\tt boolean wrapUpIfCancelled}).
+
+\begin{enumerate}
+\item If {\tt questionNumber} is greater than or equal to the number
+  of questions in the command, then this indicates that everything
+  is OK for the command to be actually executed.
+  \begin{enumerate}
+  \item Call the command's {\tt CommandMethod}.
+  \item Execute the Command Wrapup Procedure (see below) with parameter
+    {\tt false} (indicating command was not cancelled).
+  \item Return.
+  \end{enumerate}
+  Otherwise, continue with the below steps.
+\item Call the {\tt AskIfMethod} for the question.
+\item If the {\tt AskIfMethod} returns {\tt false}, then:
+  \begin{enumerate}
+  \item Execute the Question-and-Wrapup Procedure
+    (recursively), using {\tt questionNumber + 1} and {\tt wrapUpIfCancelled}
+    as parameters.
+  \item Return.
+  \end{enumerate}
+  Otherwise, continue with the below steps.
+\item If the question  has a {\tt DefaultValue}, set the value of
+  (the response to) the question to the default value.
+\item Otherwise, if the question has a {\tt DefaultValueMethod}, then call it
+  and set the value of (the response to) the question to
+  the default value.
+\item Create a question dialog box for the question.
+\end{enumerate}
+
+\subsection{Question Dialog Cancel Button Action}
+
+If the user presses the Cancel button on the Question Dialog Box:
+\begin{itemize}
+\item Dispose of the question dialog box.
+\item If {\tt wrapUpIfCancelled}, then execute the Command Wrapup
+  Procedure with parameter {\tt true}, indicating the command was
+  cancelled.
+\end{itemize}
+
+\subsection{Question Dialog OK Button Action}
+
+If the user presses the OK button on the Question Dialog Box:
+\begin{enumerate}
+\item Validate the current value of (the response to)
+  the question as if it is a
+  parameter, as indicated in requirements 26-51 of the IntI
+  specification.  (A question with no default value, for which
+  the user has not selected a value, should be interpreted as
+  an invalid response.)
+\item If the value of (the response to) the question does not pass
+  validation:
+  \begin{enumerate}
+  \item Present an error message to the user in a dialog box.
+    The error dialog box should have just an ``OK'' button.
+  \item When the user presses OK, dispose of the error dialog box.
+    (Rationale:  This will have the effect of returning control
+    to the question dialog box, so that the user can select another
+    value and press OK again or Cancel.)
+  \end{enumerate}
+\item Otherwise:
+  \begin{enumerate}
+  \item Load the current value of (the response to) the question
+    into the Gem.
+  \item Dispose of the question dialog box.
+  \item Execute the Question-and-Wrapup Procedure
+    (recursively), using {\tt questionNumber + 1} and {\tt wrapUpIfCancelled}
+    as parameters.
+  \end{enumerate}
+\end{enumerate}
+
+\section{Command Wrapup Procedure}
+
+The Command Wrapup Procedure is called after the user selects a
+command from the menu and some processing has been done.  It takes
+one {\tt boolean} parameter,
+called {\tt commandWasCancelled}.  {\tt commandWasCancelled}
+should be {\tt false} only if the application engine method was called before
+the command wrapup procedure was called.  If it is {\tt true}, this means that
+the command was cancelled in some way by the user or by Star itself.
+\begin{enumerate}
+\item If there is a Command Dialog, dispose of it.
+\item If {\tt commandWasCancelled} is {\tt false}:
+  \begin{enumerate}
+  \item Determine whether the application should quit, by checking
+    the {\tt QuitAfter} attribute and/or calling the {\tt QuitAfterIfMethod}
+    of the command.
+  \item If the application should quit:
+    \begin{enumerate}
+    \item If {\tt lastDisplayedText} is non-null and not the empty string,
+      then create a dialog box containing {\tt lastDisplayedText} and
+      an ``OK'' button, and display it.  Wait for the user to
+      click ``OK'', and then delete the dialog box.
+      (Rationale:  if the command executed a {\tt showText} method and
+      then Star exits, it may exit before the user has had time to
+      read the text.)
+    \item Exit the application, e.g. using {\tt System.exit(0)}.
+    \end{enumerate}
+  \item Otherwise:
+    \begin{enumerate}
+    \item Append a horizontal line to the Text Display Area, in order to
+      separate the last command's output from the output of any
+      future commands.
+    \item Refresh the tables (see below).
+    \end{enumerate}
+  \end{enumerate}
+\item Call the {\tt ActiveIfMethod} of every command, and make each
+  menu item of each menu active or inactive (greyed out) according to
+  the result of the {\tt ActiveIfMethod} of the command.
+\end{enumerate}
+
+\section{Refreshing the Tables}
+
+To refresh the tables:
+\begin{enumerate}
+\item For each browsable table currently being displayed in the Table Area
+  that is now hidden, delete the corresponding tab.
+\item For each browsable table not currently being displayed in the Table
+  Area that is now non-hidden, create a tab in the Table Area.
+  (After this happens, it should be the case that the only tables
+  with tabs in the Table Area are non-hidden tables.)
+\item For each non-hidden table which has been updated since the
+  last command execution terminated, update the data on the tab
+  to reflect the contents of the table.
+\item If there is a top table now, then place that table's tab on top
+  in the tab pane.
+\end{enumerate}
+
+\section{The {\tt ShowTextHandler}}
+
+The ShowTextHandler for Star handles text according to the prominence of
+the text.
+\begin{enumerate}
+\item 0-1999:  For each line of text in the message:
+  \begin{enumerate}
+  \item Truncate the line of text, if necessary, to fit in the Status Bar.
+    (Rationale:  it should fit all right, but just in case it doesn't, we
+    can show part of it.  Because it is low-prominence, it seems OK to
+    just show part of it.)
+  \item Set the Status Bar to the text.
+  \end{enumerate}
+  [Note: This will cause the last line of the most recent message to
+  overwrite anything that was in the Status Bar before.  This is OK
+  because these messages are ``low prominence''.]
+\item 2000-2999:  Append the text to the text being displayed in the
+  Text Display Area.  Append the text also to {\tt lastDisplayedText}.
+\item 3000 and higher:  Create a dialog box containing the text and an
+  ``OK'' button, and display it.  When the user clicks the ``OK'' button,
+  the box should be deleted.
+\end{enumerate}
+
+\section{The Command Dialog Box}
+
+\subsection{Creating the Command Dialog Box}
+
+\begin{enumerate}
+\item Call {\tt gemSetting.selectCurrentStage(0)}.
+\item Perform an Initialize Stage procedure.
+\item While the current stage has no queryable parameters, perform
+  a Next Stage procedure (see below).
+\item Update the dialog box to reflect the current stage, as described
+  in the Star GUI Specification document.
+\end{enumerate}
+
+\subsection{Initialize Stage Procedure}
+
+\begin{enumerate}
+\item If the current stage is a stage that has never been initialized so far,
+  then for each parameter in the current stage:
+  \begin{enumerate}
+  \item If the parameter has a {\tt DefaultValue}, set the value of the
+    parameter to the default value.
+  \item Otherwise, if the parameter has a {\tt DefaultValueMethod}, then call it
+    and set the value of the parameter to the default value.
+  \end{enumerate}
+\end{enumerate}
+
+\subsection{Next Stage Procedure}
+
+\begin{enumerate}
+\item Perform a Wrap Up Stage procedure.
+\item If the Wrap Up Stage procedure returns {\tt true}, then (assuming
+  that the current stage is in the variable {\tt currentStage}):
+  \begin{enumerate}
+  \item Set the current stage to \verb/currentStage+1/.
+  \item Call {\tt gemSetting.selectCurrentStage(currentStage)}.
+  \item Perform an Initialize Stage procedure (see above).
+  \end{enumerate}
+\end{enumerate}
+
+\subsection{Previous Stage Procedure}
+
+\begin{enumerate}
+\item Perform a Wrap Up Stage procedure.
+\item If the Wrap Up Stage procedure returns {\tt true}, then (assuming
+  that the current stage is in the variable {\tt currentStage}):
+  \begin{enumerate}
+  \item Set the current stage to \verb/currentStage-1/.
+  \item Call {\tt gemSetting.selectCurrentStage(currentStage)}.
+  \item Perform an Initialize Stage procedure (see above).
+  \end{enumerate}
+\end{enumerate}
+
+\subsection{Wrap Up Stage Procedure}
+
+This procedure takes no parameters.  It returns {\tt true} if all the tasks
+that the user had to do in the current stage have been completed, and
+it returns {\tt false} otherwise.
+\begin{enumerate}
+\item Validate the current values of the current repetitions of the
+  parameters, as indicated in requirements 26-51 of the IntI
+  specification.  (A parameter with no default value, for which the user
+  has not selected a value, should be interpreted as not adding a valid
+  repetition of the parameter.)
+\item If any parameter or parameter repetition does not pass validation,
+  then:
+  \begin{enumerate}
+  \item Collect information in a string about anything that does
+    not pass validation.
+  \item Present that information to the user in a dialog box.
+    The dialog box should have just an ``OK'' button.
+  \item When the user clicks OK:
+    \begin{enumerate}
+    \item If the current stage has no queryable
+      parameters, then perform the Command Wrapup procedure, with the
+      parameter {\tt true}.  (Rationale:  This might happen in some obscure
+      situations, such as when a {\tt tableEntry} parameter has a parent
+      parameter which gets set to the parent value.  In
+      these situations, there is nothing we can do but cancel the command.
+      The {\tt true} parameter to the Command Wrapup procedure indicates it has
+      been cancelled.)
+    \end{enumerate}
+  \item Return {\tt false}.  (Rationale:  the
+    user has not completed everything they have to do for this stage.)
+  \end{enumerate}
+\item (Otherwise:) Load the current values of the current repetitions of
+  the parameters for the current stage into the Gem.
+\item Call the ParameterCheckMethod of the current stage, if it has one.
+\item If the ParameterCheckMethod exists and returns a non-null, non-empty
+  string:
+  \begin{enumerate}
+  \item Show the user the string in a popup with an ``OK'' button.
+  \item When the user clicks OK:
+    \begin{enumerate}
+    \item If the current stage has no queryable
+      parameters, then perform the Command Wrapup procedure, with the
+      parameter {\tt true}.
+    \end{enumerate}
+  \item Return {\tt false}.
+  \end{enumerate}
+\item Otherwise, return {\tt true}.
+\end{enumerate}
+
+\subsection{Next Button Action}
+
+When the user presses the Next button (if it is not greyed out):
+\begin{enumerate}
+\item Perform a Next Stage procedure (see above).
+\item While the current stage has no queryable parameters, perform
+  a Next Stage procedure (see above).
+\item Update the dialog box to reflect the current stage, as described
+  in the Star GUI Specification document.
+\end{enumerate}
+
+\subsection{Previous Button Action}
+
+When the user presses the Previous button (if it exists and is not greyed
+out):
+\begin{enumerate}
+\item Perform a Previous Stage procedure (see above).
+\item While the current stage has no queryable parameters, perform
+  a Previous Stage procedure (see above).
+\item Update the dialog box to reflect the current stage, as described
+  in the Star GUI Specification document.
+\end{enumerate}
+
+\subsection{OK Button Action}
+
+When the user presses the OK button (if it exists and is not greyed
+out):
+\begin{enumerate}
+\item Perform the Wrap Up Stage procedure.
+\item If the Wrap Up Stage procedure returns {\tt false}, then return.
+\item For each stage \verb/i/ in the current command, from stage 0 to the
+  last stage:
+  \begin{enumerate}
+  \item Call {\tt gemSetting.selectCurrentStage(i)}.
+  \item Perform the Initialize Stage procedure.
+  \item Perform the Wrap Up Stage procedure.
+  \item If the Wrap Up Stage procedure returns {\tt false}, then return.
+  \end{enumerate}
+  (Rationale:  there may have been some previous stages which have
+  become invalid as a result of the current stage; also, there may be
+  stages after the current stage with parameters whose
+  values have not been loaded yet.)
+\item Perform the Question-and-Wrapup Procedure with parameters
+  0 and {\tt false}.
+\end{enumerate}
+
+\subsection{Cancel Button Action}
+
+When the user presses the Cancel button:
+\begin{enumerate}
+\item Perform the Command Wrapup procedure, with the parameter {\tt true}.
+\end{enumerate}
+
+\section{The Parameter Section}
+
+\subsection{Add Another Button Action}
+
+When the user clicks the Add Another button:
+\begin{itemize}
+\item Add another repetition section to the parameter section for the
+  parameter, at the bottom of the list.  You may need to add a repetition
+  to the model as well.
+  (Rationale:  This is safe because if the Add Another button exists
+  and is not greyed out, then we are not at the maximum number of
+  repetitions for the parameter yet.)
+\end{itemize}
+
+\subsection{Move Up Button Action}
+
+When the user clicks the Move Up button for repetition $k$:
+\begin{itemize}
+\item Exchange the value in repetition $k$ with the value in repetition $k-1$.
+  This should be done in the model so that the changes will be automatically
+  reflected in the GUI.
+  (Rationale:  If the Move Up button exists and is not greyed out, then
+  there is another repetition above the $k$th repetition.)
+\end{itemize}
+
+\subsection{Move Down Button Action}
+
+When the user clicks the Move Down button for repetition $k$:
+\begin{itemize}
+\item Exchange the value in repetition $k$ with the value in repetition $k+1$.
+  This should be done in the model so that the changes will be automatically
+  reflected in the GUI.
+  (Rationale:  If the Move Down button exists and is not greyed out, then
+  there is another repetition below the $k$th repetition.)
+\end{itemize}
+
+\subsection{Delete Button Action}
+
+When the user clicks the Delete button for repetition $k$:
+\begin{itemize}
+\item Delete repetition $k$.  This should be done in the model as well.
+  (Rationale:  If the Delete button exists and is not greyed out, then
+  we are not at the minimum number of repetitions for the parameter yet.)
+\end{itemize}
+
+\end{document}
